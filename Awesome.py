@@ -9,7 +9,6 @@ from decimal import *
 # output : date, score
 #awesometrigger: MA on ehich we will trigger buy/sell
 def Calculate(minor_period, major_period, awesomeTrigger, mycursor):
-	mycursor.fetchmany(100)
 	fulldata = mycursor.fetchall()
 	dailyAwesome = []
 	weeklyAwesome = []
