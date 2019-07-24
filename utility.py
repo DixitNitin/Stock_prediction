@@ -46,8 +46,8 @@ def GetWeek(date):
 	return Decimal(date.isocalendar()[0] * 100) + date.isocalendar()[1]
 
 
-#trade : symbol, date, price, score
-def Calculateprofit(trade):
+#trade : symbol, date, price, Buy/Sell
+def Calculateprofit(trades):
 	volume = 1
 	isbuy = False
 	buyprice = 0.0
@@ -57,32 +57,36 @@ def Calculateprofit(trade):
 	profit = 0.0
 	tradecount = 0
 	tradedays = 0.0
-	for val in trade:
-		if(val[3] == 'BUY'):
+
+	for i, val in trades.iterrows():
+		if(val['trade'] == 'BUY'):
 			if (isbuy):
-				buyprice = ((volume * buyprice) + val[2] )/ (volume + 1)
-				buydate += (val[1] - buydate) / (volume + 1)
+				print ("BUY and isbuy true", val)
+				buyprice = ((volume * buyprice) + val['price'] )/ (volume + 1)
+				buydate += (val['timestamp'] - buydate) / (volume + 1)
 				volume += 1
 			else:
-				profit = Decimal(profit) + (Decimal((Decimal(sellprice) - Decimal(val[2])) * Decimal(volume)))
-				tradedays = Decimal(tradedays) + (Decimal((val[1] - selldate).days) * Decimal(volume))
+				print ("BUY and isbuy false", val)
+				profit = Decimal(profit) + (Decimal((Decimal(sellprice) - Decimal(val['price'])) * Decimal(volume)))
+				tradedays = Decimal(tradedays) + (Decimal((val['timestamp'] - selldate).days) * Decimal(volume))
 				tradecount += volume
-				buyprice = val[2]
-				buydate = val[1]
+				buyprice = val['price']
+				buydate = val['timestamp']
 				volume = 1
 				isbuy = True
-		if(val[3] == 'SELL'):
+		if(val['trade'] == 'SELL'):
 			if (isbuy):
-				profit = Decimal(profit) + (Decimal((Decimal(val[2]) - Decimal(buyprice)) * Decimal(volume)))
-				tradedays = Decimal(tradedays) + (Decimal((val[1] - buydate).days) * Decimal(volume))
+				profit = Decimal(profit) + (Decimal((Decimal(val['price']) - Decimal(buyprice)) * Decimal(volume)))
+				tradedays = Decimal(tradedays) + (Decimal((val['timestamp'] - buydate).days) * Decimal(volume))
 				tradecount += volume
-				sellprice = val[2]
-				selldate = val[1]
+				sellprice = val['price']
+				selldate = val['timestamp']
 				volume = 1
 				isbuy = False
+				print ("SELL and isbuy true", val, profit, tradedays)
 	
-	#if(tradecount > 0):
-	#	print ('profit per trade : ' , profit/tradecount)
-	#	print ('Days per trade : ' , tradedays/tradecount)
-	#	print ('profit per trade per day : ' , (profit/tradecount)/(tradedays/tradecount))
-	#	print ('No of trade : ' , tradecount)
+	if(tradecount > 0):
+		print ('profit per trade : ' , profit/tradecount)
+		print ('Days per trade : ' , tradedays/tradecount)
+		print ('profit per trade per day : ' , (profit/tradecount)/(tradedays/tradecount))
+		print ('No of trade : ' , tradecount)

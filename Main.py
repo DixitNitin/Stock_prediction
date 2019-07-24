@@ -14,15 +14,28 @@ sql = "use Screener"
 mycursor.execute(sql)
 #sql = "IF NOT EXISTS( SELECT * FROM daily_data WHERE AND COLUMN_NAME = 'awesome' BEGIN ALTER TABLE daily_data ADD awesome NULL END"
 #mycursor.execute(sql)
-sql = "SELECT * FROM daily_data  where Symbol = 'MARICO'"
+sql = "SELECT * FROM daily_data  where Symbol = 'SBIN'"
 
 fulldf = pd.read_sql(sql,con=mydb)
 
 WeightDict = {'SimpleMA' : 1,'awesome' : 1}
+def input_trade(row):
+    if row['score'] > 0:
+        val = "BUY"
+    elif row['score'] < 0:
+        val = "SELL"
+    else:
+        val = "NONE"
+    return val
 
+Awesome = Awesome.Calculate(5,34, 200, fulldf)
+Awesome = pd.DataFrame(Awesome, columns = ['symbol', 'timestamp','price', 'score'])
+Awesome['trade'] = Awesome.apply(input_trade, axis = 1)
 
-Awesome = Awesome.Calculate(5,34, 150, fulldf)
-for i in Awesome:
-	if(i[3]!=0):
-		print(i)
+for i, row in Awesome.iterrows():
+	if(row['trade'] != 'NONE'):
+		print (row)
+#print (Awesome)
+utility.Calculateprofit(Awesome[['symbol','timestamp','price','trade']])
+
 mydb.close()
