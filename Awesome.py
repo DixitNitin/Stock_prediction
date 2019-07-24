@@ -4,107 +4,65 @@ import queue
 import datetime
 import utility
 from decimal import *
+import pandas as pd
+import numpy as np
+import math
 
 
-# output : date, score
+# output : symbol, date, price, score
 #awesometrigger: MA on ehich we will trigger buy/sell
-def Calculate(minor_period, major_period, awesomeTrigger, mycursor):
-	fulldata = mycursor.fetchall()
+def Calculate(minor_period, major_period, awesomeTrigger, fulldf):
 	dailyAwesome = []
 	weeklyAwesome = []
 
-	weeklyFulldata = utility.convertToWeekly(fulldata)
+	weeklyFulldata = utility.convertToWeekly(fulldf)
 
-	dailyMedian = utility.CalculateMedian(fulldata)
+	dailyMedian = utility.CalculateMedian(fulldf)
 	weeklymedian = utility.CalculateMedian(weeklyFulldata)
 	
 	dailyAwesome = awesomeCalculator(dailyMedian, minor_period, major_period)
 	weeklyAwesome = awesomeCalculator(weeklymedian, minor_period, major_period)
 	
-	return DailyAwesomeIndicator(fulldata, dailyAwesome, weeklyAwesome, awesomeTrigger)
+	return DailyAwesomeIndicator(fulldf, dailyAwesome, weeklyAwesome, awesomeTrigger)
 	
-	
-# medianList is 2d array [timestamp, median]
 def awesomeCalculator(medianList, minor_period, major_period):
-	minorq = queue.Queue(maxsize=minor_period)
-	majorq = queue.Queue(maxsize=major_period)
-	major_sum = 0.0
-	minor_sum = 0.0
-	awesome = []
-	for i in medianList:
-		# Update minor
-		if(minorq.full()):
-			remove = minorq.get()
-		else:
-			remove = 0.0
-		minorq.put(i[1])
-		minor_sum = Decimal(minor_sum) + (Decimal(Decimal(i[1]) - Decimal(remove)))
-		
-		
-		# Update major
-		if(majorq.full()):
-			remove = majorq.get()
-		else:
-			remove = 0.0
-		majorq.put(i[1])
-		major_sum = Decimal(major_sum) + (Decimal(Decimal(i[1]) - Decimal(remove)))
-		
-		if(majorq.full()):
-			score = Decimal(Decimal(minor_sum)/Decimal(minor_period)) - Decimal((Decimal(major_sum)/Decimal(major_period)))
-			awesome.append([i[0], score])
-	
-	return awesome
-		
-
+	medianList["MAsmall"] = medianList['median'].rolling(window=minor_period).mean()
+	medianList["MAlarge"] = medianList['median'].rolling(window=major_period).mean()
+	return medianList	
 
 # input data : id, time, symbol, open, high, low, close
-#output : time, value
-def DailyAwesomeIndicator(fulldata, dailyAwesome, weeklyAwesome, awesomeTrigger):
-	MAtriggerq = queue.Queue(maxsize = awesomeTrigger)
-	sum = 0
-	currentMA = 0
-	final = []
-	# trend : 1: bull, -1:bear
-	trend = 1.0
-	previ = fulldata[0]
-	triggerTrade = previ[3]
-	isTriggerBuy = False
+#output : symbol, date, price, score
+def DailyAwesomeIndicator(fulldf, dailyAwesome, weeklyAwesome, awesomeTrigger):
+	fulldf["MA"] = fulldf["close"].rolling(window=awesomeTrigger).mean()
+	prevrow = fulldf.iloc[[1]]
+	#print(fulldf)
+	trend = 1
 	daysToCheck = 3
-	score = 0
-	for i in fulldata:
-		trend = FindTrend(i[1], dailyAwesome)
-		if(MAtriggerq.full()):
-			remove = MAtriggerq.get()
-		else:
-			remove = 0.0
-		MAtriggerq.put(i[6])
-		sum = Decimal(sum) + (Decimal(Decimal(i[6]) - Decimal(remove)))
-		currentMA = Decimal(sum) / Decimal(awesomeTrigger)
-		
-		if ((isCrossOver(previ[6], i, currentMA))):
-			if((trend > 0)):
-				if(VerifyTrigger(utility.GetWeek(i[1]), weeklyAwesome, trend)):
-					#print ("after verify trigger isTriggerBuy ", i[1], i[6], score)
-					score = 100
-					triggerTrade = i[6]
+	isTriggerBuy = False
+	triggerTrade=prevrow
+	final = []
+	for i, row in fulldf.iterrows():
+		trend = FindTrend(row['timestamp'], dailyAwesome)
+		if ((isCrossOver(prevrow, row))):
+			if(VerifyTrigger(utility.GetWeek(row['timestamp']), weeklyAwesome, trend)):
+				score = trend * 100
+				if(trend > 0):
 					isTriggerBuy = True
-			
-			if((trend < 0)):
-				if(VerifyTrigger(utility.GetWeek(i[1]), weeklyAwesome, trend)):
-					score = - 100
-					triggerTrade = i[3]
+				else:
 					isTriggerBuy = False
+				triggerTrade = row
+		
 		else:
 			--daysToCheck
-		if((daysToCheck > 0) & (isCrossed(isTriggerBuy, i, triggerTrade))):
-			final.append([i[1], score, trend])
-			daysToCheck = 3
-			score = 0
-		elif(daysToCheck < 0):
-			score = 0
-			daysToCheck = 3
-		
-		previ = i
+			if((daysToCheck > 0) & (isCrossed(isTriggerBuy, row, triggerTrade))):
+				final.append([row['symbol'], row['timestamp'], row['close'],  score])
+				daysToCheck = 3
+				score = 0
+			elif(daysToCheck < 0):
+				score = 0
+				daysToCheck = 3
+			
+		prevrow = row
 	
 	return final
 				
@@ -115,13 +73,15 @@ def VerifyTrigger(date, awesomeArray, trend):
 	elementsToStudy.put(0)
 	elementsToStudy.put(0)
 	elementsToStudy.put(0)
-	for i in awesomeArray:
-		if(date == i[0]):
+	for i, row in awesomeArray.iterrows():
+		if(date == row['timestamp']):
+			if(math.isnan(row['MAlarge'])):
+				return False
 			break;
 		if(elementsToStudy.full()):
 			elementsToStudy.get()
-		elementsToStudy.put(i[1])
-	
+		elementsToStudy.put(row['MAsmall'] - row['MAlarge'])
+		
 	first = elementsToStudy.get()
 	second = elementsToStudy.get()
 	third = elementsToStudy.get()
@@ -133,9 +93,11 @@ def VerifyTrigger(date, awesomeArray, trend):
 	return False
 	
 def FindTrend(date, awesomeArray):
-	for i in awesomeArray:
-		if(date == i[0]):
-			if (Decimal(i[1]) > Decimal(0.0)):
+	for i, row in awesomeArray.iterrows():
+		if(date == row['timestamp']):
+			if(math.isnan(row['MAlarge'])):
+				return Decimal(0.0)
+			if (Decimal(row['MAsmall']) > Decimal(row['MAlarge'])):
 				return Decimal(1.0)
 			else:
 				return Decimal(-1.0)
@@ -143,26 +105,31 @@ def FindTrend(date, awesomeArray):
 	return Decimal(0.0)
 
 # row : id, time, symbol, open, high, low, close
-def isCrossOver(trigger, currRow, currentMA):
-	# from above to below on close price
-	if(trigger > currentMA):
-		if(currRow[5] < currentMA):
+def isCrossOver(prevRow, currRow):
+	if(math.isnan(prevRow['MA'])):
+		return False
+
+	if(Decimal(prevRow['close']) > Decimal(currRow['MA'])):
+		if(Decimal(currRow['low']) < Decimal(currRow['MA'])):
 			return True
 		else:
 			return False
 	# from below to above on high price
 	else:
-		if(currRow[4] > currentMA):
+		if(currRow['high'] > currRow['MA']):
 			return True
 		else:
 			return False
 			
 def isCrossed(isTriggerBuy, currRow, triggerTrade):
+	if(math.isnan(triggerTrade['MA'])):
+		return False
+
 	if(isTriggerBuy):
-		if(currRow[6] > triggerTrade):
+		if(Decimal(currRow["close"]) > Decimal(triggerTrade['close'])):
 			return True
 		return False
 	else:
-		if(currRow[6] < triggerTrade):
+		if(Decimal(currRow["close"]) < Decimal(triggerTrade['open'])):
 			return True
 		return False
